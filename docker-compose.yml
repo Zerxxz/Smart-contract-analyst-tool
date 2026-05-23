@@ -7,6 +7,7 @@ services:
       - ./backend/.env
     volumes:
       - ./backend/app:/app/app
+      - audit_data:/app/data
     restart: unless-stopped
 
   frontend:
@@ -21,3 +22,6 @@ services:
       - ./frontend:/app
     depends_on:
       - backend
+
+volumes:
+  audit_data:

@@ -1,6 +1,6 @@
 {
   "name": "smart-contract-auditor-frontend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -16,6 +16,7 @@
     "next": "14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "reactflow": "^11.11.4",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {

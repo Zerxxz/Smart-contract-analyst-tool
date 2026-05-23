@@ -5,9 +5,13 @@ pydantic-settings==2.5.2
 httpx==0.27.2
 python-multipart==0.0.12
 python-dotenv==1.0.1
+# Reports
+fpdf2==2.8.1
 # Static analysis (optional but recommended)
 slither-analyzer==0.10.4
 solc-select==1.0.4
+# Symbolic execution (optional - heavyweight)
+mythril==0.24.8
 # AI explainer (optional)
 anthropic==0.39.0
 openai==1.54.3

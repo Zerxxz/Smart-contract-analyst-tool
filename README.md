@@ -1,108 +1,150 @@
 # Smart Contract Auditor
 
-A web app for **deep static analysis & audit of Solidity smart contracts**.
+Web app for **deep static, symbolic, and behavioral analysis of Solidity smart contracts**.
 
-## Features (MVP)
+## Features
 
-- Paste Solidity source **or** fetch verified source from an on-chain address
-- Runs **custom heuristic detectors** (always available, pure Python)
-- Optional **Slither** integration (industry-grade static analyzer)
-- Optional **AI-assisted explanation** per finding (Anthropic Claude / OpenAI)
-- **Severity-sorted findings** with code snippets and line markers
-- **Markdown / JSON report export**
-- Multi-chain explorer support: Ethereum, BSC, Polygon, Arbitrum
+- **Multi-engine static analysis** — built-in heuristic detectors + [Slither](https://github.com/crytic/slither) + [Mythril](https://github.com/Consensys/mythril) symbolic execution
+- **Mempool / MEV exposure** — slippage, sandwich, spot-price oracle, ERC-4626 inflation, approve-race
+- **Honeypot scanner** — risk-scored 0-100 based on tax, blacklist, transfer-restriction, and rug patterns
+- **Call graph visualization** — interactive react-flow viewer of contracts, inheritance, and call edges
+- **Diff audit** — compare two contract versions, see introduced and fixed findings
+- **Audit history** — SQLite-backed persistent runs with replay
+- **AI-assisted explanations** per finding (Anthropic Claude / OpenAI)
+- **On-chain fetch** — Etherscan, BscScan, Polygonscan, Arbiscan
+- **Report export** — Markdown, JSON, **PDF**
 
 ## Architecture
 
 ```
-┌──────────────────┐     HTTP     ┌────────────────────┐
-│  Next.js 14      │ ───────────► │  FastAPI           │
-│  Tailwind +      │              │  ├ custom detectors│
-│  Monaco Editor   │              │  ├ slither runner  │
-└──────────────────┘              │  ├ AI explainer    │
-                                  │  └ etherscan fetch │
-                                  └────────────────────┘
+┌─────────────────────────────┐    HTTP    ┌──────────────────────────┐
+│  Next.js 14 + Tailwind      │ ─────────► │  FastAPI                 │
+│  ├─ Audit page              │            │  ├─ /audit (full)        │
+│  ├─ Diff audit              │            │  ├─ /honeypot            │
+│  ├─ Call graph (react-flow) │            │  ├─ /graph               │
+│  ├─ Honeypot scan           │            │  ├─ /diff/audit          │
+│  └─ History                 │            │  ├─ /history             │
+└─────────────────────────────┘            │  └─ /report (md/json/pdf)│
+                                           │                          │
+                                           │  Engines:                │
+                                           │  ├─ custom_detectors     │
+                                           │  ├─ mempool_detector     │
+                                           │  ├─ honeypot_detector    │
+                                           │  ├─ slither_runner       │
+                                           │  ├─ mythril_runner       │
+                                           │  ├─ call_graph           │
+                                           │  ├─ diff_analyzer        │
+                                           │  ├─ pdf_renderer (fpdf2) │
+                                           │  └─ ai_explainer         │
+                                           │                          │
+                                           │  Storage: SQLite         │
+                                           └──────────────────────────┘
 ```
 
-## Built-in Custom Detectors
+## Built-in detectors (no external tool required)
 
+### Custom (8 detectors)
 | Detector | Severity |
 |---|---|
+| Reentrancy (state write after external call) | Critical |
 | `tx.origin` for authorization | High |
+| `selfdestruct` usage | High |
+| Sensitive function w/o access control | High |
 | Unchecked low-level call | Medium |
-| Reentrancy pattern (state write after external call) | Critical |
-| Floating pragma | Informational |
-| Reliance on `block.timestamp` | Low |
-| Use of `selfdestruct` | High |
 | Missing zero-address check | Medium |
-| Sensitive function lacks access control | High |
+| `block.timestamp` reliance | Low |
+| Floating pragma | Informational |
 
-> Slither adds 80+ additional detectors when available.
+### Mempool / MEV (6 detectors)
+| Detector | Severity |
+|---|---|
+| Block-based pseudo-randomness | High |
+| Spot-price oracle (sandwich) | High |
+| Missing slippage protection | High |
+| ERC-4626 first-depositor inflation | High |
+| Front-runnable state mutation | Medium |
+| ERC-20 approve race | Medium |
+
+### Honeypot (9 indicators)
+Sender-restricted transfer (only-owner-sells), high tax, owner-modifiable tax,
+blacklist mechanism, owner-controlled trading pause, uncapped mint, fake renounce,
+owner balance override, owner-controlled max-tx.
+
+> Slither adds 80+ additional detectors when available. Mythril adds symbolic
+> execution discovery of unreachable bugs.
 
 ## Quick Start
 
-### Option A — Docker (recommended)
-
+### Docker (recommended)
 ```bash
-cd smart-contract-auditor
+git clone https://github.com/Zerxxz/Smart-contract-analyst-tool.git
+cd Smart-contract-analyst-tool
 cp backend/.env.example backend/.env   # fill in API keys (optional)
 docker compose up --build
 ```
-
 Open http://localhost:3000
 
-### Option B — Local dev
-
-**Backend:**
+### Local dev
 ```bash
+# Backend
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
-```
 
-**Frontend (in another terminal):**
-```bash
+# Frontend (new terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-## API
+## API surface
 
-- `POST /audit/source` — audit raw Solidity source
-- `POST /audit/address` — audit verified contract by address
-- `POST /report/export` — export report as Markdown or JSON
-- `GET  /audit/health` — backend status (slither availability, detectors)
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/audit/source` | POST | Full audit on raw Solidity |
+| `/audit/address` | POST | Full audit by on-chain address |
+| `/audit/health` | GET | Slither/Mythril availability + detector list |
+| `/honeypot/source` | POST | Risk-scored honeypot report |
+| `/honeypot/address` | POST | Same, by address |
+| `/graph/source` | POST | Call graph (nodes + edges) |
+| `/graph/address` | POST | Same, by address |
+| `/diff/audit` | POST | Compare two contract versions |
+| `/history` | GET | List saved audits |
+| `/history/{id}` | GET / DELETE | Detail view / delete |
+| `/report/export` | POST | Export as `markdown`, `json`, or `pdf` |
 
 Interactive docs: `http://localhost:8000/docs`
 
 ## Configuration
 
-Edit `backend/.env`:
-
+`backend/.env`:
 ```env
-ETHERSCAN_API_KEY=...
-BSCSCAN_API_KEY=...
-POLYGONSCAN_API_KEY=...
-ARBISCAN_API_KEY=...
+# Block explorers
+ETHERSCAN_API_KEY=
+BSCSCAN_API_KEY=
+POLYGONSCAN_API_KEY=
+ARBISCAN_API_KEY=
 
-AI_PROVIDER=anthropic      # or openai or none
-ANTHROPIC_API_KEY=...
-OPENAI_API_KEY=...
+# AI
+AI_PROVIDER=anthropic          # anthropic | openai | none
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+
+# CORS / DB
+FRONTEND_ORIGIN=http://localhost:3000
+AUDIT_DB_PATH=/app/data/audit_history.db
 ```
 
 ## Roadmap
 
-- [ ] Mythril symbolic execution
 - [ ] Echidna fuzzing integration
-- [ ] Call graph & inheritance visualization
-- [ ] Token-specific checks (honeypot, rug-pull patterns)
-- [ ] Diff-based audit (compare two contract versions)
-- [ ] Persistent history with SQLite
-- [ ] PDF export
-- [ ] Mempool monitoring (real-time mempool exposure analysis)
+- [ ] Token-specific live simulation (fork-based honeypot test)
+- [ ] Multi-file project upload (Foundry/Hardhat)
+- [ ] Persistent diff against on-chain deployments
+- [ ] WebSocket live audit progress
+- [ ] Mempool monitoring (real-time mempool exposure analysis on live RPCs)
 
 ## License
 

@@ -1,7 +1,8 @@
-"""Markdown / JSON report export."""
-from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse, JSONResponse
+"""Markdown / JSON / PDF report export."""
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from app.models.schemas import ReportExportRequest, AuditReport
+from app.analyzers import pdf_renderer
 
 
 router = APIRouter(prefix="/report", tags=["report"])
@@ -85,5 +86,18 @@ def render_markdown(report: AuditReport) -> str:
 async def export_report(req: ReportExportRequest):
     if req.format == "json":
         return JSONResponse(req.report.model_dump())
+    if req.format == "pdf":
+        try:
+            pdf_bytes = pdf_renderer.render(req.report)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"PDF render failed: {e}")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition":
+                    'attachment; filename="audit-report.pdf"',
+            },
+        )
     return PlainTextResponse(render_markdown(req.report),
                              media_type="text/markdown")
