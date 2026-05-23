@@ -33,6 +33,8 @@ def explain(finding: Finding, source: Optional[str] = None) -> Optional[str]:
         return _explain_anthropic(finding, source)
     if provider == "openai" and settings.openai_api_key:
         return _explain_openai(finding, source)
+    if provider == "minimax" and settings.minimax_api_key:
+        return _explain_minimax(finding, source)
     return None
 
 
@@ -69,4 +71,48 @@ def _explain_openai(finding: Finding, source: Optional[str]) -> Optional[str]:
         return resp.choices[0].message.content
     except Exception as e:  # noqa: BLE001
         print(f"[ai_explainer] openai failed: {e}")
+        return None
+
+
+def _explain_minimax(finding: Finding, source: Optional[str]) -> Optional[str]:
+    try:
+        import httpx
+        payload = {
+            "model": settings.minimax_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",
+                 "content": _build_user_prompt(finding, source)},
+            ],
+            "max_tokens": 400,
+            "temperature": 0.2,
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.minimax_api_key}",
+            "Content-Type": "application/json",
+        }
+        with httpx.Client(timeout=60) as client:
+            r = client.post(
+                settings.minimax_base_url,
+                json=payload,
+                headers=headers,
+            )
+        r.raise_for_status()
+        data = r.json()
+        base = data.get("base_resp") or {}
+        if base.get("status_code") and base.get("status_code") != 0:
+            print(f"[ai_explainer] minimax api error: {base}")
+            return None
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        content = (choices[0].get("message") or {}).get("content") or ""
+        if isinstance(content, list):
+            content = "".join(
+                blk.get("text", "") for blk in content
+                if isinstance(blk, dict)
+            )
+        return content or None
+    except Exception as e:  # noqa: BLE001
+        print(f"[ai_explainer] minimax failed: {e}")
         return None

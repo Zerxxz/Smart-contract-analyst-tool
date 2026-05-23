@@ -70,6 +70,10 @@ def generate(source: str, raw_report: AuditReport,
         ai = _call_openai(source, raw_report, honeypot)
         if ai is not None:
             return ai
+    elif provider == "minimax" and settings.minimax_api_key:
+        ai = _call_minimax(source, raw_report, honeypot)
+        if ai is not None:
+            return ai
     return _template_fallback(source, raw_report, honeypot)
 
 
@@ -151,6 +155,54 @@ def _call_openai(source, report, honeypot) -> Optional[AIAuditReport]:
         return _parse_ai_json(text, report, honeypot, ai=True)
     except Exception as e:  # noqa: BLE001
         print(f"[ai_report] openai failed: {e}")
+        return None
+
+
+def _call_minimax(source, report, honeypot) -> Optional[AIAuditReport]:
+    """MiniMax chat completion (OpenAI-compatible)."""
+    try:
+        import httpx
+        payload = {
+            "model": settings.minimax_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",
+                 "content": _build_user_prompt(source, report, honeypot)},
+            ],
+            "max_tokens": 6000,
+            "temperature": 0.1,
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.minimax_api_key}",
+            "Content-Type": "application/json",
+        }
+        with httpx.Client(timeout=120) as client:
+            r = client.post(
+                settings.minimax_base_url,
+                json=payload,
+                headers=headers,
+            )
+        r.raise_for_status()
+        data = r.json()
+        # Surface API-level errors (MiniMax sometimes returns 200 with
+        # a non-zero status_code in base_resp)
+        base = data.get("base_resp") or {}
+        if base.get("status_code") and base.get("status_code") != 0:
+            print(f"[ai_report] minimax api error: {base}")
+            return None
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        msg = choices[0].get("message") or {}
+        text = msg.get("content") or ""
+        if isinstance(text, list):  # some servers return content blocks
+            text = "".join(
+                blk.get("text", "") for blk in text
+                if isinstance(blk, dict)
+            )
+        return _parse_ai_json(text, report, honeypot, ai=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ai_report] minimax failed: {e}")
         return None
 
 

@@ -205,7 +205,9 @@ async def health():
             (settings.ai_provider == "anthropic" and
              bool(settings.anthropic_api_key)) or
             (settings.ai_provider == "openai" and
-             bool(settings.openai_api_key))
+             bool(settings.openai_api_key)) or
+            (settings.ai_provider == "minimax" and
+             bool(settings.minimax_api_key))
         ),
         "detectors": {
             "custom": custom_detectors.detector_names(),

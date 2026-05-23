@@ -127,15 +127,33 @@ BSCSCAN_API_KEY=
 POLYGONSCAN_API_KEY=
 ARBISCAN_API_KEY=
 
-# AI
-AI_PROVIDER=anthropic          # anthropic | openai | none
+# AI provider — pick one
+AI_PROVIDER=anthropic          # anthropic | openai | minimax | none
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+
+# MiniMax (https://platform.minimax.io)
+MINIMAX_API_KEY=
+MINIMAX_BASE_URL=https://api.minimax.io/v1/text/chatcompletion_v2
+MINIMAX_MODEL=MiniMax-M2.7
 
 # CORS / DB
 FRONTEND_ORIGIN=http://localhost:3000
 AUDIT_DB_PATH=/app/data/audit_history.db
 ```
+
+### Choosing an AI provider
+
+| Provider | Default model | Get a key at |
+|---|---|---|
+| `anthropic` | `claude-3-5-sonnet-20241022` | https://console.anthropic.com |
+| `openai` | `gpt-4o-mini` | https://platform.openai.com |
+| `minimax` | `MiniMax-M2.7` | https://platform.minimax.io |
+
+If no provider is configured (`AI_PROVIDER=none` or no key), the audit
+report is still produced via a deterministic templated synthesis — the
+response shape is identical, only the narrative prose and AI-suggested
+patches are absent.
 
 ## Roadmap
 
