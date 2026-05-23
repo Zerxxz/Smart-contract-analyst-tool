@@ -3,23 +3,167 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0b0f17;
-  --panel: #111827;
-  --panel-2: #1f2937;
-  --border: #374151;
-  --text: #e5e7eb;
-  --text-dim: #9ca3af;
-  --accent: #6366f1;
+  --bg: #07080d;
+  --bg-elev: #0d0f17;
+  --panel: #11141d;
+  --panel-2: #161a25;
+  --border: #232838;
+  --border-strong: #303749;
+  --text: #e7eaf3;
+  --text-dim: #8b91a3;
+  --accent: #818cf8;
+  --accent-2: #c084fc;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
 }
 
 html, body {
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto;
+  font-family:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * { box-sizing: border-box; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 5px; }
+::-webkit-scrollbar-thumb {
+  background: #2d3548;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: #3a435a; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Aurora gradient backdrop --------------------------------------------------*/
+.aurora-bg {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.aurora-bg::before,
+.aurora-bg::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 9999px;
+  filter: blur(110px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.aurora-bg::before {
+  width: 720px;
+  height: 720px;
+  top: -260px;
+  left: -200px;
+  background:
+    radial-gradient(closest-side, rgba(129, 140, 248, 0.55), transparent 70%);
+  animation: aurora-drift 22s ease-in-out infinite alternate;
+}
+.aurora-bg::after {
+  width: 620px;
+  height: 620px;
+  top: -160px;
+  right: -160px;
+  background:
+    radial-gradient(closest-side, rgba(192, 132, 252, 0.45), transparent 70%);
+  animation: aurora-drift-2 26s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-drift {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(80px, 60px) scale(1.05); }
+}
+@keyframes aurora-drift-2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-100px, 80px) scale(1.08); }
+}
+
+/* Glass card ---------------------------------------------------------------*/
+.glass {
+  background: linear-gradient(
+    180deg,
+    rgba(22, 26, 37, 0.85) 0%,
+    rgba(13, 15, 23, 0.85) 100%
+  );
+  border: 1px solid var(--border);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.glass-strong {
+  background: linear-gradient(
+    180deg,
+    rgba(28, 33, 47, 0.92) 0%,
+    rgba(17, 20, 29, 0.92) 100%
+  );
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+/* Gradient utilities -------------------------------------------------------*/
+.text-gradient {
+  background: linear-gradient(135deg, #c4b5fd 0%, #f0abfc 50%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn-gradient {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  color: white;
+  box-shadow:
+    0 8px 28px -10px rgba(99, 102, 241, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
+}
+.btn-gradient:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 36px -10px rgba(99, 102, 241, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.btn-gradient:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Animations ---------------------------------------------------------------*/
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.5s ease-out both; }
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.55); }
+  70%  { box-shadow: 0 0 0 14px rgba(129, 140, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(129, 140, 248, 0); }
+}
+.pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.06) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Severity ring colors -----------------------------------------------------*/
+.score-safe        { color: #22c55e; stroke: #22c55e; }
+.score-low_risk    { color: #84cc16; stroke: #84cc16; }
+.score-moderate_risk { color: #f59e0b; stroke: #f59e0b; }
+.score-high_risk   { color: #f97316; stroke: #f97316; }
+.score-critical_risk { color: #ef4444; stroke: #ef4444; }

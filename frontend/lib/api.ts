@@ -2,6 +2,7 @@ import type {
   AuditReport, AuditOpts,
   HoneypotReport, CallGraph, DiffResult,
   HistoryListResponse, HistoryDetailResponse,
+  AIAuditReport,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -64,7 +65,25 @@ export async function auditAddress(opts: {
   return handle<AuditReport>(r);
 }
 
-// ─── Honeypot ───────────────────────────────────────────────────────────
+// --- AI Audit (one-shot) ---------------------------------------------------
+export async function aiAudit(opts: {
+  source: string;
+  filename?: string;
+  persist?: boolean;
+}): Promise<AIAuditReport> {
+  const r = await fetch(`${API_URL}/audit/ai-report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: opts.source,
+      filename: opts.filename ?? "Contract.sol",
+      persist: opts.persist ?? false,
+    }),
+  });
+  return handle<AIAuditReport>(r);
+}
+
+// --- Honeypot --------------------------------------------------------------
 export async function honeypotSource(source: string): Promise<HoneypotReport> {
   const r = await fetch(`${API_URL}/honeypot/source`, {
     method: "POST",
@@ -142,6 +161,8 @@ export async function getHealth() {
     ok: boolean;
     slither_available: boolean;
     mythril_available: boolean;
+    ai_provider: string;
+    ai_configured: boolean;
     detectors: { custom: string[]; mempool: string[] };
   }>(r);
 }

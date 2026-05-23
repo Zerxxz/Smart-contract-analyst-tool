@@ -157,3 +157,46 @@ class HistoryDetailResponse(BaseModel):
     timestamp: str
     source: str
     report: AuditReport
+
+
+# ─── AI-Structured Audit Report ─────────────────────────────────────────────
+
+RiskLevel = Literal[
+    "safe", "low_risk", "moderate_risk", "high_risk", "critical_risk",
+]
+
+
+class KeyFinding(BaseModel):
+    title: str
+    severity: Severity
+    location: str  # human-readable, e.g. "withdraw() at line 8"
+    explanation: str  # plain-language description
+    impact: str  # attacker capability / consequence
+    fix: str  # what to change
+    code_before: Optional[str] = None
+    code_after: Optional[str] = None  # AI-suggested patched code
+    references: List[str] = []
+
+
+class AIAuditReport(BaseModel):
+    # Top-line verdict
+    overall_score: int = Field(..., ge=0, le=100)
+    risk_level: RiskLevel
+    one_line_verdict: str
+    is_ai_generated: bool
+
+    # AI-curated narrative sections (markdown)
+    executive_summary: str
+    key_findings: List[KeyFinding]
+    code_quality_notes: str
+    recommendations: List[str]
+
+    # Underlying detector data (preserved for transparency)
+    raw_report: AuditReport
+    honeypot: Optional[HoneypotReport] = None
+
+
+class AIAuditRequest(BaseModel):
+    source: str = Field(..., description="Solidity source code")
+    filename: str = "Contract.sol"
+    persist: bool = False

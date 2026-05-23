@@ -120,3 +120,35 @@ export interface AuditOpts {
   use_ai?: boolean;
   persist?: boolean;
 }
+
+export type RiskLevel =
+  | "safe"
+  | "low_risk"
+  | "moderate_risk"
+  | "high_risk"
+  | "critical_risk";
+
+export interface KeyFinding {
+  title: string;
+  severity: Severity;
+  location: string;
+  explanation: string;
+  impact: string;
+  fix: string;
+  code_before?: string | null;
+  code_after?: string | null;
+  references: string[];
+}
+
+export interface AIAuditReport {
+  overall_score: number;
+  risk_level: RiskLevel;
+  one_line_verdict: string;
+  is_ai_generated: boolean;
+  executive_summary: string;
+  key_findings: KeyFinding[];
+  code_quality_notes: string;
+  recommendations: string[];
+  raw_report: AuditReport;
+  honeypot?: HoneypotReport | null;
+}

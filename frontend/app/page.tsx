@@ -1,17 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/CodeEditor";
-import { FindingsPanel } from "@/components/FindingsPanel";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { AIReportView } from "@/components/AIReportView";
+import { AnalysisProgress } from "@/components/AnalysisProgress";
+import { aiAudit, exportReport, getHealth } from "@/lib/api";
+import type { AIAuditReport } from "@/lib/types";
 import {
-  auditAddress, auditSource, exportReport, getHealth, honeypotSource,
-} from "@/lib/api";
-import type { AuditReport, HoneypotReport } from "@/lib/types";
-import { Download, Play, Wand2, Save, Flame } from "lucide-react";
-import { HoneypotPanel } from "@/components/HoneypotPanel";
+  Sparkles, ArrowRight, Download, RefreshCw, Code, Brain,
+  Save,
+} from "lucide-react";
 
-const SAMPLE = `// Sample vulnerable contract for testing
+const SAMPLE = `// Paste any Solidity contract here
 pragma solidity ^0.8.0;
 
 contract Vault {
@@ -37,73 +37,39 @@ contract Vault {
 }
 `;
 
-type Tab = "source" | "address";
-
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("source");
   const [source, setSource] = useState(SAMPLE);
-  const [address, setAddress] = useState("");
-  const [chain, setChain] = useState("eth");
-
-  const [useSlither, setUseSlither] = useState(true);
-  const [useMythril, setUseMythril] = useState(false);
-  const [useMempool, setUseMempool] = useState(true);
-  const [useHoneypot, setUseHoneypot] = useState(true);
-  const [useAi, setUseAi] = useState(false);
-  const [persist, setPersist] = useState(false);
-
+  const [report, setReport] = useState<AIAuditReport | null>(null);
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<AuditReport | null>(null);
-  const [honeypotReport, setHoneypotReport] = useState<HoneypotReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [slitherOk, setSlitherOk] = useState<boolean | null>(null);
-  const [mythrilOk, setMythrilOk] = useState<boolean | null>(null);
-  const [highlightLine, setHighlightLine] = useState<number | null>(null);
+  const [persist, setPersist] = useState(false);
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getHealth()
-      .then((h) => {
-        setSlitherOk(h.slither_available);
-        setMythrilOk(h.mythril_available);
-      })
-      .catch(() => {
-        setSlitherOk(false);
-        setMythrilOk(false);
-      });
+      .then((h) => setAiConfigured(h.ai_configured))
+      .catch(() => setAiConfigured(false));
   }, []);
 
-  async function runAudit() {
+  async function analyze() {
+    if (!source.trim()) {
+      setError("Please paste a contract first.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setReport(null);
-    setHoneypotReport(null);
     try {
-      const opts = {
-        use_slither: useSlither,
-        use_mythril: useMythril,
-        use_mempool: useMempool,
-        use_honeypot: useHoneypot,
-        use_ai: useAi,
-        persist,
-      };
-      let result: AuditReport;
-      let usedSource = source;
-      if (tab === "source") {
-        result = await auditSource({ source, ...opts });
-      } else {
-        result = await auditAddress({ address, chain, ...opts });
-        usedSource = "";
-      }
-      setReport(result);
-      // Run dedicated honeypot scoring if enabled, in parallel-ish
-      if (useHoneypot && tab === "source") {
-        try {
-          const hp = await honeypotSource(usedSource);
-          setHoneypotReport(hp);
-        } catch {
-          /* non-fatal */
-        }
-      }
+      const r = await aiAudit({ source, persist });
+      setReport(r);
+      // Smooth scroll to report
+      setTimeout(() => {
+        reportRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -111,11 +77,10 @@ export default function Home() {
     }
   }
 
-  async function downloadReport(format: "markdown" | "json" | "pdf") {
+  async function download(format: "markdown" | "json" | "pdf") {
     if (!report) return;
-    const content = await exportReport(report, format);
-    let blob: Blob;
-    let ext: string;
+    const content = await exportReport(report.raw_report, format);
+    let blob: Blob, ext: string;
     if (format === "pdf") {
       blob = content as Blob;
       ext = "pdf";
@@ -134,187 +99,166 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  function reset() {
+    setReport(null);
+    setError(null);
+  }
+
   return (
-    <main className="p-6 max-w-[1600px] mx-auto">
-      <header className="mb-6">
-        <h1 className="text-xl font-bold tracking-tight">Audit</h1>
-        <p className="text-xs text-gray-400">
-          Paste source or fetch by address, then run static + symbolic analysis.
-        </p>
-        <div className="flex items-center gap-2 mt-2 text-[11px]">
-          <Pill ok={slitherOk}>Slither: {slitherOk === null ? "…" : slitherOk ? "ready" : "off"}</Pill>
-          <Pill ok={mythrilOk}>Mythril: {mythrilOk === null ? "…" : mythrilOk ? "ready" : "off"}</Pill>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="space-y-3">
-          <div className="flex gap-2">
-            <TabBtn active={tab === "source"} onClick={() => setTab("source")}>
-              Source Code
-            </TabBtn>
-            <TabBtn active={tab === "address"} onClick={() => setTab("address")}>
-              Contract Address
-            </TabBtn>
-          </div>
-
-          {tab === "source" ? (
-            <CodeEditor
-              value={source}
-              onChange={setSource}
-              highlightLine={highlightLine}
-            />
-          ) : (
-            <Card className="p-4 space-y-3">
-              <Field label="Contract Address">
-                <input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="0x..."
-                  className="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono"
-                />
-              </Field>
-              <Field label="Chain">
-                <select
-                  value={chain}
-                  onChange={(e) => setChain(e.target.value)}
-                  className="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm"
-                >
-                  <option value="eth">Ethereum</option>
-                  <option value="bsc">BNB Smart Chain</option>
-                  <option value="polygon">Polygon</option>
-                  <option value="arbitrum">Arbitrum</option>
-                </select>
-              </Field>
-              <p className="text-xs text-gray-500">
-                Source will be fetched from the corresponding block explorer.
-              </p>
-            </Card>
-          )}
-
-          <Card className="p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <Toggle checked={useSlither} disabled={!slitherOk} onChange={setUseSlither}>
-              Slither (static)
-            </Toggle>
-            <Toggle checked={useMempool} onChange={setUseMempool}>
-              Mempool / MEV
-            </Toggle>
-            <Toggle checked={useHoneypot} onChange={setUseHoneypot}>
-              <Flame className="w-3 h-3" /> Honeypot scan
-            </Toggle>
-            <Toggle checked={useMythril} disabled={!mythrilOk} onChange={setUseMythril}>
-              Mythril (symbolic)
-            </Toggle>
-            <Toggle checked={useAi} onChange={setUseAi}>
-              <Wand2 className="w-3 h-3" /> AI explanations
-            </Toggle>
-            <Toggle checked={persist} onChange={setPersist}>
-              <Save className="w-3 h-3" /> Save to history
-            </Toggle>
-            <div className="col-span-2 flex justify-end mt-2">
-              <Button onClick={runAudit} disabled={loading}>
-                <Play className="w-4 h-4" />
-                {loading ? "Auditing…" : "Run Audit"}
-              </Button>
-            </div>
-          </Card>
-
-          {error && (
-            <Card className="p-3 border-red-500/40 text-red-300 text-sm">
-              {error}
-            </Card>
-          )}
-
-          {honeypotReport && <HoneypotPanel report={honeypotReport} />}
-        </section>
-
-        <section className="space-y-3">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold">Findings</h2>
-            {report && (
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => downloadReport("markdown")}>
-                  <Download className="w-4 h-4" /> .md
-                </Button>
-                <Button variant="ghost" onClick={() => downloadReport("json")}>
-                  <Download className="w-4 h-4" /> .json
-                </Button>
-                <Button variant="ghost" onClick={() => downloadReport("pdf")}>
-                  <Download className="w-4 h-4" /> .pdf
-                </Button>
-              </div>
+    <main className="aurora-bg min-h-screen">
+      {/* HERO + INPUT --------------------------------------------------- */}
+      <section className="max-w-5xl mx-auto px-6 pt-12 md:pt-20 pb-10">
+        <div className="text-center mb-10 animate-fade-up">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass mb-5">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
+            <span className="text-xs font-medium text-gray-200 tracking-wide">
+              AI-curated smart contract audit
+            </span>
+            {aiConfigured === false && (
+              <span className="text-[10px] uppercase tracking-wider text-amber-300 ml-1">
+                · template mode
+              </span>
             )}
           </div>
-          <FindingsPanel report={report} onJumpToLine={setHighlightLine} />
-        </section>
-      </div>
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.05]">
+            <span className="text-gradient">Audit any Solidity contract</span>
+            <br />
+            <span className="text-white">in seconds.</span>
+          </h1>
+          <p className="mt-5 text-base md:text-lg text-gray-400 max-w-2xl mx-auto">
+            Paste your contract below, click <strong className="text-gray-200">Analyze</strong>,
+            and get a clean, executive-quality report with prioritized fixes.
+          </p>
+        </div>
+
+        {/* Input card */}
+        <div className="glass-strong rounded-2xl p-1.5 animate-fade-up" style={{ animationDelay: "0.1s" }}>
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <Code className="w-3.5 h-3.5" />
+              <span className="font-mono">Contract.sol</span>
+            </div>
+            <button
+              onClick={() => setSource("")}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="rounded-b-xl overflow-hidden">
+            <CodeEditor value={source} onChange={setSource} />
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col sm:flex-row items-center gap-3 justify-center animate-fade-up" style={{ animationDelay: "0.2s" }}>
+          <button
+            onClick={analyze}
+            disabled={loading}
+            className="btn-gradient inline-flex items-center gap-2 px-7 py-3 rounded-xl font-semibold text-base"
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <Brain className="w-4 h-4" />
+                Analyze contract
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+
+          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={persist}
+              onChange={(e) => setPersist(e.target.checked)}
+              className="accent-indigo-500"
+            />
+            <Save className="w-3.5 h-3.5" />
+            Save to history
+          </label>
+        </div>
+
+        {error && (
+          <div className="mt-5 max-w-xl mx-auto rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200 animate-fade-up">
+            {error}
+          </div>
+        )}
+      </section>
+
+      {/* RESULTS -------------------------------------------------------- */}
+      <section
+        ref={reportRef}
+        className="max-w-5xl mx-auto px-6 pb-20"
+      >
+        {loading && <AnalysisProgress />}
+
+        {report && !loading && (
+          <>
+            <div className="flex items-center justify-between mb-5 animate-fade-up">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
+                Audit report
+              </h2>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={() => download("markdown")}>
+                  <Download className="w-3.5 h-3.5" /> .md
+                </Button>
+                <Button variant="ghost" onClick={() => download("json")}>
+                  <Download className="w-3.5 h-3.5" /> .json
+                </Button>
+                <Button variant="ghost" onClick={() => download("pdf")}>
+                  <Download className="w-3.5 h-3.5" /> .pdf
+                </Button>
+                <Button variant="ghost" onClick={reset}>
+                  <RefreshCw className="w-3.5 h-3.5" /> New
+                </Button>
+              </div>
+            </div>
+            <AIReportView report={report} />
+          </>
+        )}
+
+        {!report && !loading && !error && (
+          <FeatureRow />
+        )}
+      </section>
     </main>
   );
 }
 
-function Pill({ ok, children }: { ok: boolean | null; children: React.ReactNode }) {
+function FeatureRow() {
+  const items = [
+    {
+      title: "8 custom heuristics",
+      body: "Reentrancy, tx.origin, selfdestruct, access-control, unchecked calls, and more.",
+    },
+    {
+      title: "Mempool & MEV",
+      body: "Slippage, sandwich, spot-price oracle, ERC-4626 inflation, approve-race.",
+    },
+    {
+      title: "Honeypot scanner",
+      body: "9 indicators with 0–100 risk score: tax, blacklist, transfer-restriction.",
+    },
+    {
+      title: "AI-curated report",
+      body: "Executive summary, prioritized fixes, before/after code, references.",
+    },
+  ];
   return (
-    <span
-      className={`px-2 py-0.5 rounded ${
-        ok === null
-          ? "bg-gray-700 text-gray-300"
-          : ok
-          ? "bg-green-500/20 text-green-300"
-          : "bg-yellow-500/20 text-yellow-300"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function TabBtn({
-  active, onClick, children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={`px-3 py-1.5 rounded text-sm ${
-        active
-          ? "bg-indigo-600 text-white"
-          : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block text-sm text-gray-300">
-      {label}
-      {children}
-    </label>
-  );
-}
-
-function Toggle({
-  checked, onChange, disabled, children,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={`flex items-center gap-2 ${disabled ? "opacity-50" : ""}`}>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      {children}
-    </label>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 animate-fade-up">
+      {items.map((it) => (
+        <div key={it.title} className="glass rounded-xl p-4">
+          <div className="text-sm font-semibold text-gray-100 mb-1">
+            {it.title}
+          </div>
+          <p className="text-xs text-gray-400 leading-relaxed">{it.body}</p>
+        </div>
+      ))}
+    </div>
   );
 }

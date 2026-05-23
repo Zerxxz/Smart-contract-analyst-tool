@@ -7,10 +7,12 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     SourceAuditRequest, AddressAuditRequest, AuditReport, AuditMeta, Finding,
+    AIAuditRequest, AIAuditReport,
 )
 from app.analyzers import (
     custom_detectors, slither_runner, ai_explainer,
     mempool_detector, honeypot_detector, mythril_runner,
+    ai_report_generator,
 )
 from app.api.onchain import fetch_source
 from app.db import database
@@ -157,12 +159,54 @@ async def audit_address(req: AddressAuditRequest):
     )
 
 
+@router.post("/ai-report", response_model=AIAuditReport)
+async def ai_audit_report(req: AIAuditRequest):
+    """One-call audit: paste contract, get a polished AI-curated report.
+
+    Runs ALL available detectors silently, then synthesizes findings into
+    an executive-style report. Falls back to a deterministic template if
+    no AI key is configured, so the response shape is always consistent.
+    """
+    if not req.source.strip():
+        raise HTTPException(400, "Source code is empty")
+
+    raw_report = _audit_pipeline(
+        source=req.source,
+        filename=req.filename,
+        solc_version=None,
+        use_slither=True,
+        use_mythril=False,  # too slow for synchronous UX
+        use_mempool=True,
+        use_honeypot=True,
+        use_ai=False,  # narrative comes from ai_report_generator instead
+        persist=False,
+    )
+    honeypot = honeypot_detector.analyze(req.source)
+    ai_report = ai_report_generator.generate(req.source, raw_report, honeypot)
+
+    if req.persist:
+        try:
+            database.save_audit(raw_report, req.source)
+        except Exception as e:  # noqa: BLE001
+            print(f"[ai-report] persist failed: {e}")
+
+    return ai_report
+
+
 @router.get("/health")
 async def health():
+    from app.core.config import settings
     return {
         "ok": True,
         "slither_available": slither_runner.is_available(),
         "mythril_available": mythril_runner.is_available(),
+        "ai_provider": settings.ai_provider,
+        "ai_configured": (
+            (settings.ai_provider == "anthropic" and
+             bool(settings.anthropic_api_key)) or
+            (settings.ai_provider == "openai" and
+             bool(settings.openai_api_key))
+        ),
         "detectors": {
             "custom": custom_detectors.detector_names(),
             "mempool": mempool_detector.detector_names(),
